@@ -21,6 +21,7 @@ extern crate error_chain;
 extern crate log;
 #[macro_use]
 extern crate serde_derive;
+extern crate jsonrpc_types;
 
 /// Re-export of the `futures` crate.
 #[macro_use]
@@ -36,6 +37,7 @@ pub mod contract;
 pub mod error;
 pub mod transports;
 pub mod types;
+pub mod abos_types;
 
 pub mod confirm;
 
