@@ -8,6 +8,7 @@ mod personal;
 mod traces;
 mod web3;
 mod abos;
+mod bool;
 
 pub use self::eth::Eth;
 pub use self::eth_filter::{BaseFilter, CreateFilter, EthFilter, FilterStream};
@@ -17,6 +18,7 @@ pub use self::personal::Personal;
 pub use self::web3::Web3 as Web3Api;
 pub use self::traces::Traces;
 pub use self::abos::Abos;
+pub use self::bool::{Proof, ReceiptProof};
 
 use std::time::Duration;
 use futures::IntoFuture;
@@ -86,6 +88,10 @@ impl<T: Transport> Web3<T> {
 
     /// Access methods from `trace` namespace
     pub fn trace(&self) -> traces::Traces<T> {
+        self.api()
+    }
+
+    pub fn bool(&self) -> bool::Proof<T> {
         self.api()
     }
 

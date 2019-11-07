@@ -36,11 +36,13 @@ tokio-uds = { version = "0.1", optional = true }
 websocket = { version = "0.21", optional = true }
 
 jsonrpc-types = { git = "https://github.com/ABMatrix/cita-common.git", branch = "develop" }
+trie = { package = "merkle_patricia_trie", git = "https://github.com/ABMatrix/merkle-patricia-trie.git", branch = "web3"}
 
 [dev-dependencies]
 # For examples
 tokio-core = "0.1"
 rustc-hex = "1.0"
+env_logger = "0.7.1"
 
 [features]
 default = ["http", "ipc", "ws", "tls"]
