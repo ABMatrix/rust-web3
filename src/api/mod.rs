@@ -18,11 +18,11 @@ pub use self::personal::Personal;
 pub use self::web3::Web3 as Web3Api;
 pub use self::traces::Traces;
 pub use self::abos::Abos;
-pub use self::bool::{Proof, ReceiptProof};
+pub use self::bool::{Bool, ReceiptProof};
 
 use std::time::Duration;
 use futures::IntoFuture;
-use {confirm, DuplexTransport, Error, Transport};
+use {confirm, DuplexTransport, Error, Transport, BatchTransport};
 use types::{Bytes, TransactionRequest, U256};
 
 /// Common API for all namespaces
@@ -88,10 +88,6 @@ impl<T: Transport> Web3<T> {
 
     /// Access methods from `trace` namespace
     pub fn trace(&self) -> traces::Traces<T> {
-        self.api()
-    }
-
-    pub fn bool(&self) -> bool::Proof<T> {
         self.api()
     }
 

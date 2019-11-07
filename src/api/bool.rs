@@ -1,25 +1,28 @@
-//! `proof` namespace
+//! `bool` namespace
 
 use api::Namespace;
 use helpers::{self, CallFuture, BatchCallFuture};
+use futures::{Future, IntoFuture, Poll, Stream};
 use types::{Address, Block, BlockId, BlockNumber, Bytes, CallRequest, H256, H520, H64, Index, SyncState, Transaction, TransactionId, TransactionReceipt, TransactionRequest, U256, Work, Filter, Log};
 use Transport;
 use BatchTransport;
 use super::eth::Eth;
 use error::Error;
+use crate::RequestId;
+use trie::{Trie, build_trie, Proof};
 
-/// `Proof` namespace
+/// `Bool` namespace
 #[derive(Debug, Clone)]
-pub struct Proof<T> {
+pub struct Bool<T> {
     transport: T,
 }
 
-impl<T: BatchTransport> Namespace<T> for Proof<T> {
+impl<T: BatchTransport> Namespace<T> for Bool<T> {
     fn new(transport: T) -> Self
         where
             Self: Sized,
     {
-        Proof { transport }
+        Bool { transport }
     }
 
     fn transport(&self) -> &T {
@@ -27,45 +30,45 @@ impl<T: BatchTransport> Namespace<T> for Proof<T> {
     }
 }
 
-impl<T: BatchTransport> Proof<T> {
+impl<T: BatchTransport> Bool<T> {
 
 //    pub fn get_header(&self, block_id:BlockId) -> CallFuture<T> {
 //
 //    }
 
-//    pub fn receipts(&self, hashs:Vec<H256>) -> BatchCallFuture<Option<TransactionReceipt>, T::Batch> {
-//
-//        let (id, request) = self.transport.prepare(method, params);
-//        self.send(id, request)
-//    }
+    pub fn receipts(&self, hashs:Vec<H256>) -> BatchCallFuture<Option<TransactionReceipt>, T::Batch> {
+        let requests = hashs.into_iter().map(|hash| {
+            let req = helpers::serialize(&hash);
+            self.transport.prepare("eth_getTransactionReceipt", vec![req])
+        }).collect::<Vec<(RequestId, rpc::Call)>>();
+
+        BatchCallFuture::new(self.transport.send_batch(requests))
+    }
 
     /// Get receipt proof
-    pub fn get_receipt_proof(&self, hash: H256) -> ReceiptProof<T> {
+    pub fn receipt_proof(&self, hash: H256) -> ReceiptProof<T> {
         let hash = TransactionId::Hash(hash);
         let eth = Eth::new(self.transport().clone());
         ReceiptProof::new(ReceiptProofState::Transaction(eth.transaction(hash)), eth)
     }
 
-//    pub fn get_transaction_proof(&self, hash: H256) -> TransactionProof<T> {
+//    pub fn transaction_proof(&self, hash: H256) -> TransactionProof<T> {
 //
 //    }
 }
 
-use futures::{Future, IntoFuture, Poll, Stream};
-
-
-pub enum ReceiptProofState<T: Transport> {
+pub enum ReceiptProofState<T: BatchTransport> {
     Transaction(CallFuture<Option<Transaction>, T::Out>),
     Block(Transaction, CallFuture<Option<Block<H256>>, T::Out>),
-    Receipts(Transaction, Block<H256>, CallFuture<Option<TransactionReceipt>, T::Out>),
+    Receipts(Transaction, Block<H256>, BatchCallFuture<Option<TransactionReceipt>, T::Batch>),
 }
 
-pub struct ReceiptProof<T: Transport> {
+pub struct ReceiptProof<T: BatchTransport> {
     eth: Eth<T>,
     state: ReceiptProofState<T>,
 }
 
-impl<T: Transport> ReceiptProof<T> {
+impl<T: BatchTransport> ReceiptProof<T> {
     pub fn new(state: ReceiptProofState<T>, eth: Eth<T>) -> Self {
         ReceiptProof {
             eth,
@@ -74,8 +77,8 @@ impl<T: Transport> ReceiptProof<T> {
     }
 }
 
-impl<T: Transport> Future for ReceiptProof<T> {
-    type Item = Option<TransactionReceipt>;
+impl<T: BatchTransport> Future for ReceiptProof<T> {
+    type Item = Vec<Option<TransactionReceipt>>;
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
@@ -87,20 +90,25 @@ impl<T: Transport> Future for ReceiptProof<T> {
                         let block_id = BlockId::Hash(t.block_hash.unwrap());
                         ReceiptProofState::Block(t, self.eth.block(block_id))
                     } else {
-                        return Ok(None.into())
+                        return Ok(vec![].into())
                     }
                 },
                 ReceiptProofState::Block(ref transaction, ref mut future) => {
+                    let bl = Bool::new(self.eth.transport().clone());
                     let block = try_ready!(future.poll());
                     if let Some(b) = block {
-                        ReceiptProofState::Receipts(transaction.clone(), b, self.eth.transaction_receipt(transaction.hash.clone()))
+                        let hashs = b.transactions.clone();
+                        ReceiptProofState::Receipts(transaction.clone(), b, bl.receipts(hashs))
                     } else {
-                        return Ok(None.into())
+                        return Ok(vec![].into())
                     }
                 },
                 ReceiptProofState::Receipts(ref transaction, ref block, ref mut future) => {
-                    let receipt = try_ready!(future.poll());
-                    return Ok(receipt.into())
+                    let receipts = try_ready!(future.poll());
+
+                    // build proof
+                    receipts.into_iter().filter(|&x| x.is_none()).map(||)
+                    return Ok(receipts.into())
                 }
             };
 

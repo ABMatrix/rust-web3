@@ -37,6 +37,7 @@ websocket = { version = "0.21", optional = true }
 
 jsonrpc-types = { git = "https://github.com/ABMatrix/cita-common.git", branch = "develop" }
 trie = { package = "merkle_patricia_trie", git = "https://github.com/ABMatrix/merkle-patricia-trie.git", branch = "web3"}
+rlp = "0.4.3"
 
 [dev-dependencies]
 # For examples

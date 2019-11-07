@@ -77,10 +77,10 @@ impl<T: serde::de::DeserializeOwned, F> Future for BatchCallFuture<T, F>
                         Ok(value) => {
                             match serde_json::from_value(value) {
                                 Ok(rv) => out.push(rv),
-                                Err(e) => return Err(e)
+                                Err(e) => { ()}
                             }
                         },
-                        Err(e) => return Err(e)
+                        Err(e) => return ()
                     }
                 });
                 Ok(out.into())
