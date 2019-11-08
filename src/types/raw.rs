@@ -329,7 +329,7 @@ impl From<RpcReceipt> for Receipt {
             outcome = TransactionOutcome::StateRoot(root);
         }
         Receipt {
-            gas_used: rpc.gas_used,
+            gas_used: rpc.gas_used.unwrap_or(U256::zero()),
             log_bloom: rpc.log_bloom,
             logs: rpc.logs.into_iter().map(|v| v.into()).collect(),
             outcome: outcome

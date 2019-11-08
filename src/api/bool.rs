@@ -1,14 +1,12 @@
 //! `bool` namespace
 
-use api::Namespace;
-use helpers::{self, CallFuture, BatchCallFuture};
-use futures::{Future, IntoFuture, Poll, Stream};
-use types::{Address, Block, BlockId, BlockNumber, Bytes, CallRequest, H256, H520, H64, U128, Index, SyncState, Transaction, TransactionId, TransactionReceipt, TransactionRequest, U256, Work, Filter, Log, RawHeader, RawReceipt};
-use {Transport, BatchTransport};
-use super::eth::Eth;
-use error::{Error, ErrorKind};
-use crate::RequestId;
+use crate::api::{Namespace, Eth};
+use crate::helpers::{self, CallFuture, BatchCallFuture};
+use crate::types::{Address, Block, BlockId, BlockNumber, Bytes, CallRequest, H256, H520, H64, U128, Index, SyncState, Transaction, TransactionId, TransactionReceipt, TransactionRequest, U256, Work, Filter, Log, RawHeader, RawReceipt};
+use crate::error::{Error, ErrorKind};
+use crate::{RequestId, BatchTransport};
 use trie::{Trie, build_order_trie, Proof};
+use futures::{Future, IntoFuture, Poll, Stream};
 
 /// `Bool` namespace
 #[derive(Debug, Clone)]

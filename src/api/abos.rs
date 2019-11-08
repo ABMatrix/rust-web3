@@ -1,10 +1,10 @@
 //! `Abos` namespace
 #![allow(dead_code, unused_imports)]
-use api::Namespace;
-use helpers::{self, CallFuture};
-use Transport;
-use types::{U256, Bytes, BlockId, H256, Address};
-use abos_types::{
+use crate::api::Namespace;
+use crate::helpers::{self, CallFuture};
+use crate::Transport;
+use crate::types::{U256, Bytes, BlockId, H256, Address};
+use crate::abos_types::{
     Block, Receipt, Filter, Log, CallRequest, BlockNumber, BlockTransaction, MetaData, TxResponse
 };
 use std::str::FromStr;
