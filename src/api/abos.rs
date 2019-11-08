@@ -3,7 +3,7 @@
 use crate::api::Namespace;
 use crate::helpers::{self, CallFuture};
 use crate::Transport;
-use crate::types::{U256, Bytes, BlockId, H256, Address};
+use crate::types::{U256, Bytes, BlockId, H256, Address, U64};
 use crate::abos_types::{
     Block, Receipt, Filter, Log, CallRequest, BlockNumber, BlockTransaction, MetaData, TxResponse
 };
@@ -31,7 +31,7 @@ impl<T: Transport> Namespace<T> for Abos<T> {
 
 impl<T: Transport> Abos<T> {
     /// Get current block number
-    pub fn block_number(&self) -> CallFuture<U256, T::Out> {
+    pub fn block_number(&self) -> CallFuture<U64, T::Out> {
         CallFuture::new(self.transport.execute("blockNumber", vec![]))
     }
 
