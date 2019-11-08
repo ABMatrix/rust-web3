@@ -46,7 +46,7 @@ impl<T: BatchTransport> Bool<T> {
         let eth = Eth::new(self.transport().clone());
         eth.transaction_receipt(hash).and_then(|recepit| {
             match recepit {
-                Some(r) => Ok(Some(r.into()).into()),
+                Some(r) => Ok(Some(RawReceipt::from(r)).into()),
                 None => Ok(None.into()),
             }
         })
@@ -122,22 +122,17 @@ impl<T: BatchTransport> Future for ReceiptProof<T> {
                 },
                 ReceiptProofState::Receipts(ref transaction, ref block, ref mut future) => {
                     let receipts = try_ready!(future.poll());
-                    println!("########### {:?}", receipts);
                     // build proof
                     let raw_receipts:Vec<RawReceipt> = receipts.into_iter().filter(|x| x.is_some()).map(|x| {x.unwrap().into()}).collect();
-                    println!("########### {:?}", raw_receipts);
                     if raw_receipts.len() != block.transactions.len() {
                         return Err(Error::InvalidResponse("Expected got batch success".into()).into());
                     }
                     let rlp_receipts:Vec<Vec<u8>> = raw_receipts.into_iter().map(|r| rlp::encode(&r)).collect();
-                    println!("########### rlp_receipts {:?}", rlp_receipts);
                     let transaction_index: U128 = transaction.transaction_index.ok_or(Error::InvalidResponse("Expected transaction index".into()))?;
                     let index = transaction_index.bits();
-                    println!("########### index {:?}", index);
                     let mut trie = build_order_trie(rlp_receipts)?;
                     // check status root.
                     let root = trie.root()?;
-                    println!("##### root: {:?},  block root: {:?}", Bytes(root.clone()), block.receipts_root);
                     if root != block.receipts_root.as_ref() {
                         return Err(Error::InvalidResponse("Expected valid receipts root".into()).into())
                     }

@@ -249,8 +249,6 @@ impl Decodable for Receipt {
 }
 
 
-
-
 /// A record of execution for a `LOG` operation.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct LogEntry {
@@ -329,9 +327,9 @@ impl From<RpcReceipt> for Receipt {
             outcome = TransactionOutcome::StateRoot(root);
         }
         Receipt {
-            gas_used: rpc.gas_used.unwrap_or(U256::zero()),
+            gas_used: rpc.cumulative_gas_used,
             log_bloom: rpc.logs_bloom,
-            logs: rpc.logs.into_iter().map(|v| v.into()).collect(),
+            logs: rpc.logs.into_iter().map(|v| v.into()).collect::<Vec<LogEntry>>(),
             outcome: outcome
         }
     }
@@ -403,6 +401,21 @@ mod tests {
         let encoded: Vec<u8> = ::rlp::encode(&r);
         assert_eq!(&encoded[..], &expected[..]);
         let decoded: Receipt = ::rlp::decode(&encoded).expect("decoding receipt failed");
+        assert_eq!(decoded, r);
+    }
+
+    #[test]
+    fn test_status_code2() {
+        let expected:Vec<u8> = ::rustc_hex::FromHex::from_hex("f9010901835cdb6eb9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c0").unwrap();
+        let r = Receipt::new(
+            TransactionOutcome::StatusCode(1),
+            6085486.into(),
+            vec![],
+        );
+        let encoded: Vec<u8> = ::rlp::encode(&r);
+        assert_eq!(&encoded[..], &expected[..]);
+        let decoded: Receipt = ::rlp::decode(&encoded).expect("decoding receipt failed");
+        println!("{:?}", decoded);
         assert_eq!(decoded, r);
     }
 }
