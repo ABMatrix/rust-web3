@@ -2,7 +2,6 @@ extern crate web3;
 extern crate tokio_core;
 extern crate env_logger;
 
-
 use std::str::FromStr;
 use web3::{
     api::Namespace,

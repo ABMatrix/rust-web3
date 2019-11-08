@@ -25,7 +25,7 @@ fn main() {
     println!("raw receipt: {:?} ", raw_receipt);
 
     let rlp_receipt = rlp::encode(&raw_receipt);
-    println!("raw rlp hex: {}",rlp_receipt.to_hex());
+    println!("raw rlp hex: {}",rlp_receipt.to_hex::<String>());
 
     let de_receipt:RawReceipt = rlp::decode(&rlp_receipt).unwrap();
 }

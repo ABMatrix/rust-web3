@@ -64,7 +64,7 @@ pub struct Receipt {
     pub status: Option<U64>,
     /// The OR-wide combination of all logs' blooms for this transaction.
     #[serde(rename = "logsBloom")]
-    pub log_bloom: H2048,
+    pub logs_bloom: H2048,
     pub root: Option<H256>,
 }
 

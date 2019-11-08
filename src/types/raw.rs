@@ -330,7 +330,7 @@ impl From<RpcReceipt> for Receipt {
         }
         Receipt {
             gas_used: rpc.gas_used.unwrap_or(U256::zero()),
-            log_bloom: rpc.log_bloom,
+            log_bloom: rpc.logs_bloom,
             logs: rpc.logs.into_iter().map(|v| v.into()).collect(),
             outcome: outcome
         }
@@ -350,6 +350,7 @@ impl From<RpcLog> for LogEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr;
 
     #[test]
     fn test_no_state_root() {
