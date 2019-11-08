@@ -6,6 +6,7 @@
 use std::io;
 use serde_json;
 use rpc;
+use trie;
 
 error_chain! {
   foreign_links {
@@ -42,6 +43,12 @@ error_chain! {
 
 impl From<serde_json::Error> for Error {
     fn from(err: serde_json::Error) -> Self {
+        ErrorKind::Decoder(format!("{:?}", err)).into()
+    }
+}
+
+impl From<trie::TrieError> for Error {
+    fn from(err: trie::TrieError) -> Self {
         ErrorKind::Decoder(format!("{:?}", err)).into()
     }
 }

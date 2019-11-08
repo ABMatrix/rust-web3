@@ -3,13 +3,12 @@
 use api::Namespace;
 use helpers::{self, CallFuture, BatchCallFuture};
 use futures::{Future, IntoFuture, Poll, Stream};
-use types::{Address, Block, BlockId, BlockNumber, Bytes, CallRequest, H256, H520, H64, Index, SyncState, Transaction, TransactionId, TransactionReceipt, TransactionRequest, U256, Work, Filter, Log};
-use Transport;
-use BatchTransport;
+use types::{Address, Block, BlockId, BlockNumber, Bytes, CallRequest, H256, H520, H64, U128, Index, SyncState, Transaction, TransactionId, TransactionReceipt, TransactionRequest, U256, Work, Filter, Log, RawHeader, RawReceipt};
+use {Transport, BatchTransport};
 use super::eth::Eth;
-use error::Error;
+use error::{Error, ErrorKind};
 use crate::RequestId;
-use trie::{Trie, build_trie, Proof};
+use trie::{Trie, build_order_trie, Proof};
 
 /// `Bool` namespace
 #[derive(Debug, Clone)]
@@ -32,10 +31,29 @@ impl<T: BatchTransport> Namespace<T> for Bool<T> {
 
 impl<T: BatchTransport> Bool<T> {
 
-//    pub fn get_header(&self, block_id:BlockId) -> CallFuture<T> {
-//
-//    }
+    /// Get raw block header
+    pub fn raw_header(&self, block_id:BlockId) -> impl Future<Item = Option<RawHeader>, Error = Error> {
+        let eth = Eth::new(self.transport().clone());
+        eth.block(block_id).and_then(|block| {
+            match block {
+                Some(b) => Ok(Some(b.into()).into()),
+                None => Ok(None.into()),
+            }
+        })
+    }
 
+    /// Get raw transaction receipt
+    pub fn raw_transaction_receipt(&self, hash: H256) -> impl Future<Item = Option<RawReceipt>, Error = Error> {
+        let eth = Eth::new(self.transport().clone());
+        eth.transaction_receipt(hash).and_then(|recepit| {
+            match recepit {
+                Some(r) => Ok(Some(r.into()).into()),
+                None => Ok(None.into()),
+            }
+        })
+    }
+
+    /// Get receipts by batch sending
     pub fn receipts(&self, hashs:Vec<H256>) -> BatchCallFuture<Option<TransactionReceipt>, T::Batch> {
         let requests = hashs.into_iter().map(|hash| {
             let req = helpers::serialize(&hash);
@@ -78,7 +96,7 @@ impl<T: BatchTransport> ReceiptProof<T> {
 }
 
 impl<T: BatchTransport> Future for ReceiptProof<T> {
-    type Item = Vec<Option<TransactionReceipt>>;
+    type Item = Option<(u64, Vec<u8>, H256)>;
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
@@ -90,7 +108,7 @@ impl<T: BatchTransport> Future for ReceiptProof<T> {
                         let block_id = BlockId::Hash(t.block_hash.unwrap());
                         ReceiptProofState::Block(t, self.eth.block(block_id))
                     } else {
-                        return Ok(vec![].into())
+                        return Ok(None.into())
                     }
                 },
                 ReceiptProofState::Block(ref transaction, ref mut future) => {
@@ -100,15 +118,34 @@ impl<T: BatchTransport> Future for ReceiptProof<T> {
                         let hashs = b.transactions.clone();
                         ReceiptProofState::Receipts(transaction.clone(), b, bl.receipts(hashs))
                     } else {
-                        return Ok(vec![].into())
+                        return Ok(None.into())
                     }
                 },
                 ReceiptProofState::Receipts(ref transaction, ref block, ref mut future) => {
                     let receipts = try_ready!(future.poll());
-
+                    println!("########### {:?}", receipts);
                     // build proof
-                    receipts.into_iter().filter(|&x| x.is_none()).map(||)
-                    return Ok(receipts.into())
+                    let raw_receipts:Vec<RawReceipt> = receipts.into_iter().filter(|x| x.is_some()).map(|x| {x.unwrap().into()}).collect();
+                    println!("########### {:?}", raw_receipts);
+                    if raw_receipts.len() != block.transactions.len() {
+                        return Err(ErrorKind::InvalidResponse("Expected got batch success".into()).into());
+                    }
+                    let rlp_receipts:Vec<Vec<u8>> = raw_receipts.into_iter().map(|r| rlp::encode(&r)).collect();
+                    println!("########### rlp_receipts {:?}", rlp_receipts);
+                    let transaction_index: U128 = transaction.transaction_index.ok_or(ErrorKind::InvalidResponse("Expected transaction index".into()))?;
+                    let index = transaction_index.bits();
+                    println!("########### index {:?}", index);
+                    let mut trie = build_order_trie(rlp_receipts)?;
+                    // check status root.
+                    let root = trie.root()?;
+                    println!("##### root: {:?},  block root: {:?}", Bytes(root.clone()), block.receipts_root);
+                    if root != block.receipts_root.as_ref() {
+                        return Err(ErrorKind::InvalidResponse("Expected valid receipts root".into()).into())
+                    }
+                    let proof = trie.get_proof(&rlp::encode(&index))?;
+                    let rlp_proof = proof.to_rlp();
+                    let header_hash = block.hash.unwrap_or_else(|| RawHeader::from(block.clone()).hash());
+                    return Ok(Some((index as u64, rlp_proof, header_hash)).into())
                 }
             };
 
@@ -116,3 +153,4 @@ impl<T: BatchTransport> Future for ReceiptProof<T> {
         }
     }
 }
+

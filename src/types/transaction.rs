@@ -1,4 +1,4 @@
-use types::{Bytes, H160, H256, Index, Log, U256, U64};
+use types::{Bytes, H160, H256, Index, Log, U256, U64, H2048};
 
 /// Description of a Transaction, pending or in the chain.
 #[derive(Debug, Default, Clone, PartialEq, Deserialize, Serialize)]
@@ -59,6 +59,10 @@ pub struct Receipt {
     pub logs: Vec<Log>,
     /// Status: either 1 (success) or 0 (failure).
     pub status: Option<U64>,
+    /// The OR-wide combination of all logs' blooms for this transaction.
+    #[serde(rename = "logsBloom")]
+    pub log_bloom: H2048,
+    pub root: Option<H256>,
 }
 
 #[cfg(test)]

@@ -203,7 +203,7 @@ macro_rules! uint_tokenizable {
     impl Tokenizable for $uint {
       fn from_token(token: Token) -> Result<Self, Error> {
         match token {
-          Token::Int(data) | Token::Uint(data) => Ok(data.into()),
+          Token::Int(data) | Token::Uint(data) => Ok(::std::convert::TryInto::try_into(data).unwrap()),
           other => Err(ErrorKind::InvalidOutputType(format!("Expected `{}`, got {:?}",  $name, other)).into()),
         }
       }

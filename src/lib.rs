@@ -23,6 +23,8 @@ extern crate log;
 extern crate serde_derive;
 extern crate jsonrpc_types;
 extern crate trie;
+extern crate rlp;
+extern crate hash;
 
 /// Re-export of the `futures` crate.
 #[macro_use]
