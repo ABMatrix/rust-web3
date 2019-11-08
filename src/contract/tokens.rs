@@ -147,7 +147,7 @@ impl Tokenizable for String {
     fn from_token(token: Token) -> Result<Self, Error> {
         match token {
             Token::String(s) => Ok(s),
-            other => Err(Error::InvalidOutputType(format!("Expected `String`, got {:?}", other)).into()),
+            other => Err(Error::InvalidOutputType(format!("Expected `String`, got {:?}", other))),
         }
     }
 
@@ -169,7 +169,7 @@ impl Tokenizable for H256 {
                 }
                 Ok(data.into())
             }
-            other => Err(Error::InvalidOutputType(format!("Expected `H256`, got {:?}", other)).into()),
+            other => Err(Error::InvalidOutputType(format!("Expected `H256`, got {:?}", other))),
         }
     }
 
@@ -182,7 +182,7 @@ impl Tokenizable for Address {
     fn from_token(token: Token) -> Result<Self, Error> {
         match token {
             Token::Address(data) => Ok(data),
-            other => Err(Error::InvalidOutputType(format!("Expected `Address`, got {:?}", other)).into()),
+            other => Err(Error::InvalidOutputType(format!("Expected `Address`, got {:?}", other))),
         }
     }
 
@@ -191,12 +191,12 @@ impl Tokenizable for Address {
     }
 }
 
-macro_rules! uint_tokenizable {
+macro_rules! eth_uint_tokenizable {
     ($uint: ident, $name: expr) => {
         impl Tokenizable for $uint {
             fn from_token(token: Token) -> Result<Self, Error> {
                 match token {
-                    Token::Int(data) | Token::Uint(data) => Ok(data.into()),
+                    Token::Int(data) | Token::Uint(data) => Ok(::std::convert::TryInto::try_into(data).unwrap()),
                     other => Err(Error::InvalidOutputType(format!("Expected `{}`, got {:?}", $name, other)).into()),
                 }
             }
@@ -208,27 +208,46 @@ macro_rules! uint_tokenizable {
     };
 }
 
-uint_tokenizable!(U256, "U256");
-uint_tokenizable!(U128, "U128");
+eth_uint_tokenizable!(U256, "U256");
+eth_uint_tokenizable!(U128, "U128");
 
-impl Tokenizable for u64 {
-    fn from_token(token: Token) -> Result<Self, Error> {
-        match token {
-            Token::Int(data) | Token::Uint(data) => Ok(data.low_u64()),
-            other => Err(Error::InvalidOutputType(format!("Expected `u64`, got {:?}", other)).into()),
+macro_rules! int_tokenizable {
+    ($int: ident, $token: ident) => {
+        impl Tokenizable for $int {
+            fn from_token(token: Token) -> Result<Self, Error> {
+                match token {
+                    Token::Int(data) | Token::Uint(data) => Ok(data.low_u128() as _),
+                    other => Err(Error::InvalidOutputType(format!(
+                        "Expected `{}`, got {:?}",
+                        stringify!($int),
+                        other
+                    ))),
+                }
+            }
+
+            fn into_token(self) -> Token {
+                Token::$token(self.into())
+            }
         }
-    }
-
-    fn into_token(self) -> Token {
-        Token::Uint(self.into())
-    }
+    };
 }
+
+int_tokenizable!(i8, Int);
+int_tokenizable!(i16, Int);
+int_tokenizable!(i32, Int);
+int_tokenizable!(i64, Int);
+int_tokenizable!(i128, Int);
+int_tokenizable!(u8, Uint);
+int_tokenizable!(u16, Uint);
+int_tokenizable!(u32, Uint);
+int_tokenizable!(u64, Uint);
+int_tokenizable!(u128, Uint);
 
 impl Tokenizable for bool {
     fn from_token(token: Token) -> Result<Self, Error> {
         match token {
             Token::Bool(data) => Ok(data),
-            other => Err(Error::InvalidOutputType(format!("Expected `bool`, got {:?}", other)).into()),
+            other => Err(Error::InvalidOutputType(format!("Expected `bool`, got {:?}", other))),
         }
     }
     fn into_token(self) -> Token {
@@ -236,12 +255,29 @@ impl Tokenizable for bool {
     }
 }
 
+/// Marker trait for `Tokenizable` types that are can tokenized to and from a
+/// `Token::Array` and `Token:FixedArray`.
+pub trait TokenizableItem: Tokenizable {}
+
+macro_rules! tokenizable_item {
+    ($($type: ty,)*) => {
+        $(
+            impl TokenizableItem for $type {}
+        )*
+    };
+}
+
+tokenizable_item! {
+    Token, String, Address, H256, U256, U128, bool, Vec<u8>,
+    i8, i16, i32, i64, i128, u16, u32, u64, u128,
+}
+
 impl Tokenizable for Vec<u8> {
     fn from_token(token: Token) -> Result<Self, Error> {
         match token {
             Token::Bytes(data) => Ok(data),
             Token::FixedBytes(data) => Ok(data),
-            other => Err(Error::InvalidOutputType(format!("Expected `bytes`, got {:?}", other)).into()),
+            other => Err(Error::InvalidOutputType(format!("Expected `bytes`, got {:?}", other))),
         }
     }
     fn into_token(self) -> Token {
@@ -249,13 +285,13 @@ impl Tokenizable for Vec<u8> {
     }
 }
 
-impl<T: Tokenizable> Tokenizable for Vec<T> {
+impl<T: TokenizableItem> Tokenizable for Vec<T> {
     fn from_token(token: Token) -> Result<Self, Error> {
         match token {
             Token::FixedArray(tokens) | Token::Array(tokens) => {
                 tokens.into_iter().map(Tokenizable::from_token).collect()
             }
-            other => Err(Error::InvalidOutputType(format!("Expected `Array`, got {:?}", other)).into()),
+            other => Err(Error::InvalidOutputType(format!("Expected `Array`, got {:?}", other))),
         }
     }
 
@@ -263,6 +299,8 @@ impl<T: Tokenizable> Tokenizable for Vec<T> {
         Token::Array(self.into_iter().map(Tokenizable::into_token).collect())
     }
 }
+
+impl<T: TokenizableItem> TokenizableItem for Vec<T> {}
 
 macro_rules! impl_fixed_types {
     ($num: expr) => {
@@ -293,7 +331,9 @@ macro_rules! impl_fixed_types {
             }
         }
 
-        impl<T: Tokenizable + Clone> Tokenizable for [T; $num] {
+        impl TokenizableItem for [u8; $num] {}
+
+        impl<T: TokenizableItem + Clone> Tokenizable for [T; $num] {
             fn from_token(token: Token) -> Result<Self, Error> {
                 match token {
                     Token::FixedArray(tokens) => {
@@ -326,6 +366,8 @@ macro_rules! impl_fixed_types {
                 Token::FixedArray(ArrayVec::from(self).into_iter().map(T::into_token).collect())
             }
         }
+
+        impl<T: TokenizableItem + Clone> TokenizableItem for [T; $num] {}
     };
 }
 
@@ -369,6 +411,9 @@ mod tests {
         let _bytes: Vec<[[u8; 1]; 64]> = output();
 
         let _mixed: (Vec<Vec<u8>>, [U256; 4], Vec<U256>, U256) = output();
+
+        let _ints: (i8, i16, i32, i64, i128) = output();
+        let _uints: (u16, u32, u64, u128) = output();
     }
 
     #[test]

@@ -13,7 +13,7 @@ pub struct Transaction {
     pub block_hash: Option<H256>,
     /// Block number. None when pending.
     #[serde(rename = "blockNumber")]
-    pub block_number: Option<U256>,
+    pub block_number: Option<U64>,
     /// Transaction Index. None when pending.
     #[serde(rename = "transactionIndex")]
     pub transaction_index: Option<Index>,
@@ -46,7 +46,7 @@ pub struct Receipt {
     pub block_hash: Option<H256>,
     /// Number of the block this transaction was included within.
     #[serde(rename = "blockNumber")]
-    pub block_number: Option<U256>,
+    pub block_number: Option<U64>,
     /// Cumulative gas used within the block after this was executed.
     #[serde(rename = "cumulativeGasUsed")]
     pub cumulative_gas_used: U256,
@@ -88,7 +88,7 @@ pub struct RawTransactionDetails {
     pub block_hash: Option<H256>,
     /// Block number. None when pending.
     #[serde(rename = "blockNumber")]
-    pub block_number: Option<U256>,
+    pub block_number: Option<U64>,
     /// Transaction Index. None when pending.
     #[serde(rename = "transactionIndex")]
     pub transaction_index: Option<Index>,
@@ -108,9 +108,9 @@ pub struct RawTransactionDetails {
     /// ECDSA recovery id, set by Geth
     pub v: Option<U64>,
     /// ECDSA signature r, 32 bytes, set by Geth
-    pub r: Option<Bytes>,
+    pub r: Option<U256>,
     /// ECDSA signature s, 32 bytes, set by Geth
-    pub s: Option<Bytes>,
+    pub s: Option<U256>,
 }
 
 #[cfg(test)]
@@ -180,7 +180,8 @@ mod tests {
           "value": "0x7f110",
           "gas": "0x7f110",
           "gasPrice": "0x09184e72a000",
-          "input": "0x603880600c6000396000f300603880600c6000396000f3603880600c6000396000f360"
+          "input": "0x603880600c6000396000f300603880600c6000396000f3603880600c6000396000f360",
+          "s": "0x777"
         }
     }"#;
 

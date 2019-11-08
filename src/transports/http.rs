@@ -43,7 +43,6 @@ impl From<hyper::header::InvalidHeaderValue> for Error {
     }
 }
 
-#[cfg(all(feature = "http", not(feature = "ws")))]
 impl From<self::url::ParseError> for Error {
     fn from(err: self::url::ParseError) -> Self {
         Error::Transport(format!("{:?}", err))
@@ -53,7 +52,7 @@ impl From<self::url::ParseError> for Error {
 #[cfg(feature = "tls")]
 impl From<native_tls::Error> for Error {
     fn from(err: native_tls::Error) -> Self {
-        Error::Transport(format!("{:?}", err)).into()
+        Error::Transport(format!("{:?}", err))
     }
 }
 
@@ -108,9 +107,10 @@ impl Http {
                 .for_each(|(response, tx)| {
                     use futures::future::Either::{A, B};
                     let future = match response {
-                        Ok(ref res) if !res.status().is_success() => A(future::err(
-                            Error::Transport(format!("Unexpected response status code: {}", res.status())).into(),
-                        )),
+                        Ok(ref res) if !res.status().is_success() => A(future::err(Error::Transport(format!(
+                            "Unexpected response status code: {}",
+                            res.status()
+                        )))),
                         Ok(res) => B(res.into_body().concat2().map_err(Into::into)),
                         Err(err) => A(future::err(err.into())),
                     };
@@ -126,15 +126,11 @@ impl Http {
         let basic_auth = {
             let url = Url::parse(url)?;
             let user = url.username();
-
-            if user.len() > 0 {
-                let auth = match url.password() {
-                    Some(pass) => format!("{}:{}", user, pass),
-                    None => format!("{}:", user),
-                };
-                Some(HeaderValue::from_str(&format!("Basic {}", base64::encode(&auth)))?)
-            } else {
+            let auth = format!("{}:{}", user, url.password().unwrap_or_default());
+            if &auth == ":" {
                 None
+            } else {
+                Some(HeaderValue::from_str(&format!("Basic {}", base64::encode(&auth)))?)
             }
         };
 
@@ -176,7 +172,7 @@ impl Http {
         let result = self
             .write_sender
             .unbounded_send((req, tx))
-            .map_err(|_| Error::Io(::std::io::ErrorKind::BrokenPipe.into()).into());
+            .map_err(|_| Error::Io(::std::io::ErrorKind::BrokenPipe.into()));
 
         Response::new(id, result, rx, extract)
     }
@@ -214,22 +210,73 @@ impl BatchTransport for Http {
 
 /// Parse bytes RPC response into `Result`.
 fn single_response<T: Deref<Target = [u8]>>(response: T) -> Result<rpc::Value> {
-    let response =
-        serde_json::from_slice(&*response).map_err(|e| Error::from(Error::InvalidResponse(format!("{:?}", e))))?;
+    let response = serde_json::from_slice(&*response).map_err(|e| Error::InvalidResponse(format!("{:?}", e)))?;
 
     match response {
         rpc::Response::Single(output) => helpers::to_result_from_output(output),
-        _ => Err(Error::InvalidResponse("Expected single, got batch.".into()).into()),
+        _ => Err(Error::InvalidResponse("Expected single, got batch.".into())),
     }
 }
 
 /// Parse bytes RPC batch response into `Result`.
 fn batch_response<T: Deref<Target = [u8]>>(response: T) -> Result<Vec<Result<rpc::Value>>> {
-    let response =
-        serde_json::from_slice(&*response).map_err(|e| Error::from(Error::InvalidResponse(format!("{:?}", e))))?;
+    let response = serde_json::from_slice(&*response).map_err(|e| Error::InvalidResponse(format!("{:?}", e)))?;
 
     match response {
         rpc::Response::Batch(outputs) => Ok(outputs.into_iter().map(helpers::to_result_from_output).collect()),
-        _ => Err(Error::InvalidResponse("Expected batch, got single.".into()).into()),
+        _ => Err(Error::InvalidResponse("Expected batch, got single.".into())),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn http_supports_basic_auth_with_user_and_password() {
+        let http = Http::new("https://user:password@127.0.0.1:8545");
+        assert!(http.is_ok());
+        match http {
+            Ok((_, transport)) => {
+                assert!(transport.basic_auth.is_some());
+                assert_eq!(
+                    transport.basic_auth,
+                    Some(HeaderValue::from_static("Basic dXNlcjpwYXNzd29yZA=="))
+                )
+            }
+            Err(_) => assert!(false, ""),
+        }
+    }
+
+    #[test]
+    fn http_supports_basic_auth_with_user_no_password() {
+        let http = Http::new("https://username:@127.0.0.1:8545");
+        assert!(http.is_ok());
+        match http {
+            Ok((_, transport)) => {
+                assert!(transport.basic_auth.is_some());
+                assert_eq!(
+                    transport.basic_auth,
+                    Some(HeaderValue::from_static("Basic dXNlcm5hbWU6"))
+                )
+            }
+            Err(_) => assert!(false, ""),
+        }
+    }
+
+    #[test]
+    fn http_supports_basic_auth_with_only_password() {
+        let http = Http::new("https://:password@127.0.0.1:8545");
+        assert!(http.is_ok());
+        match http {
+            Ok((_, transport)) => {
+                assert!(transport.basic_auth.is_some());
+                assert_eq!(
+                    transport.basic_auth,
+                    Some(HeaderValue::from_static("Basic OnBhc3N3b3Jk"))
+                )
+            }
+            Err(_) => assert!(false, ""),
+        }
     }
 }

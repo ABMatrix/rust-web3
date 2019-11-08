@@ -1,11 +1,11 @@
 //! Web3 Error
 use crate::rpc::error::Error as RPCError;
-use derive_more::Display;
+use derive_more::{Display, From};
 use serde_json::Error as SerdeError;
 use std::io::Error as IoError;
 
 /// Errors which can occur when attempting to generate resource uri.
-#[derive(Debug, Display)]
+#[derive(Debug, Display, From)]
 pub enum Error {
     /// server is unreachable
     #[display(fmt = "Server is unreachable")]
@@ -30,21 +30,20 @@ pub enum Error {
     Internal,
 }
 
-impl From<IoError> for Error {
-    fn from(e: IoError) -> Self {
-        Error::Io(e)
-    }
-}
-
-impl From<RPCError> for Error {
-    fn from(e: RPCError) -> Self {
-        Error::Rpc(e)
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        use self::Error::*;
+        match *self {
+            Unreachable | Decoder(_) | InvalidResponse(_) | Transport(_) | Internal => None,
+            Rpc(ref e) => Some(e),
+            Io(ref e) => Some(e),
+        }
     }
 }
 
 impl From<SerdeError> for Error {
     fn from(err: SerdeError) -> Self {
-        Error::Decoder(format!("{:?}", err)).into()
+        Error::Decoder(format!("{:?}", err))
     }
 }
 
@@ -57,7 +56,7 @@ impl Clone for Error {
             InvalidResponse(s) => InvalidResponse(s.clone()),
             Transport(s) => Transport(s.clone()),
             Rpc(e) => Rpc(e.clone()),
-            Io(e) => Io(IoError::from(e.kind().clone())),
+            Io(e) => Io(IoError::from(e.kind())),
             Internal => Internal,
         }
     }

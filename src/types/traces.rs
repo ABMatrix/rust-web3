@@ -1,7 +1,7 @@
 //! Types for the Parity Ad-Hoc Trace API
 use std::collections::BTreeMap;
 
-use crate::types::{Action, Bytes, Res, H160, H256, U256};
+use crate::types::{Action, ActionType, Bytes, Res, H160, H256, U256};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize)]
@@ -31,41 +31,54 @@ pub struct BlockTrace {
     /// State Difference
     #[serde(rename = "stateDiff")]
     pub state_diff: Option<StateDiff>,
+    /// Transaction Hash
+    #[serde(rename = "transactionHash")]
+    pub transaction_hash: Option<H256>,
 }
 
 //---------------- State Diff ----------------
-#[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
 /// Aux type for Diff::Changed.
+#[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
 pub struct ChangedType<T> {
-    from: T,
-    to: T,
+    /// Previous value.
+    pub from: T,
+    /// Current value.
+    pub to: T,
 }
 
-#[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
 /// Serde-friendly `Diff` shadow.
+#[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
 pub enum Diff<T> {
+    /// No change.
     #[serde(rename = "=")]
     Same,
+    /// A new value has been set.
     #[serde(rename = "+")]
     Born(T),
+    /// A value has been removed.
     #[serde(rename = "-")]
     Died(T),
+    /// Value changed.
     #[serde(rename = "*")]
     Changed(ChangedType<T>),
 }
 
-#[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
 /// Serde-friendly `AccountDiff` shadow.
+#[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
 pub struct AccountDiff {
+    /// Account balance.
     pub balance: Diff<U256>,
+    /// Account nonce.
     pub nonce: Diff<U256>,
+    /// Account code.
     pub code: Diff<Bytes>,
+    /// Account storage.
     pub storage: BTreeMap<H256, Diff<H256>>,
 }
 
-#[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
 /// Serde-friendly `StateDiff` shadow.
-pub struct StateDiff(BTreeMap<H160, AccountDiff>);
+#[derive(Debug, PartialEq, Clone, Deserialize, Serialize)]
+pub struct StateDiff(pub BTreeMap<H160, AccountDiff>);
 
 // ------------------ Trace -------------
 /// Trace
@@ -73,13 +86,18 @@ pub struct StateDiff(BTreeMap<H160, AccountDiff>);
 pub struct TransactionTrace {
     /// Trace address
     #[serde(rename = "traceAddress")]
-    trace_address: Vec<usize>,
+    pub trace_address: Vec<usize>,
     /// Subtraces
-    subtraces: usize,
+    pub subtraces: usize,
     /// Action
-    action: Action,
+    pub action: Action,
+    /// Action Type
+    #[serde(rename = "type")]
+    pub action_type: ActionType,
     /// Result
-    result: Option<Res>,
+    pub result: Option<Res>,
+    /// Error
+    pub error: Option<String>,
 }
 
 // ---------------- VmTrace ------------------------------
@@ -150,6 +168,11 @@ mod tests {
     // with 'trace', 'vmTrace', 'stateDiff'
     const EXAMPLE_TRACE: &'static str = include!("./example-trace-str.rs");
 
+    // block: https://etherscan.io/block/46147
+    // using the 'trace_replayBlockTransactions' API function
+    // with 'trace', 'vmTrace', 'stateDiff'
+    const EXAMPLE_TRACES: &'static str = include!("./example-traces-str.rs");
+
     #[test]
     fn test_serialize_trace_type() {
         let trace_type_str = r#"["trace","vmTrace","stateDiff"]"#;
@@ -162,5 +185,10 @@ mod tests {
     #[test]
     fn test_deserialize_blocktrace() {
         let _trace: BlockTrace = serde_json::from_str(EXAMPLE_TRACE).unwrap();
+    }
+
+    #[test]
+    fn test_deserialize_blocktraces() {
+        let _traces: Vec<BlockTrace> = serde_json::from_str(EXAMPLE_TRACES).unwrap();
     }
 }

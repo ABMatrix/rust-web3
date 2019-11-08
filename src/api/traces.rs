@@ -21,6 +21,7 @@ impl<T: Transport> Namespace<T> for Traces<T> {
         &self.transport
     }
 }
+
 impl<T: Transport> Traces<T> {
     /// Executes the given call and returns a number of possible traces for it
     pub fn call(
@@ -57,12 +58,12 @@ impl<T: Transport> Traces<T> {
         &self,
         block: BlockNumber,
         trace_type: Vec<TraceType>,
-    ) -> CallFuture<BlockTrace, T::Out> {
+    ) -> CallFuture<Vec<BlockTrace>, T::Out> {
         let block = helpers::serialize(&block);
         let trace_type = helpers::serialize(&trace_type);
         CallFuture::new(
             self.transport
-                .execute("trace_replayBlockTransaction", vec![block, trace_type]),
+                .execute("trace_replayBlockTransactions", vec![block, trace_type]),
         )
     }
 
@@ -99,7 +100,9 @@ mod tests {
     use futures::Future;
 
     use crate::api::Namespace;
-    use crate::types::{BlockNumber, BlockTrace, Bytes, CallRequest, Trace, TraceFilterBuilder, TraceType, H256};
+    use crate::types::{
+        Address, BlockNumber, BlockTrace, Bytes, CallRequest, Trace, TraceFilterBuilder, TraceType, H256,
+    };
 
     use super::Traces;
 
@@ -129,6 +132,34 @@ mod tests {
         "vmTrace": null
     }
     "#;
+
+    const EXAMPLE_BLOCKTRACES: &'static str = r#"
+	[{
+        "output": "0x",
+        "stateDiff": null,
+        "trace": [
+            {
+                "action": {
+                    "callType": "call",
+                    "from": "0xa1e4380a3b1f749673e270229993ee55f35663b4",
+                    "gas": "0x0",
+                    "input": "0x",
+                    "to": "0x5df9b87991262f6ba471f09758cde1c0fc1de734",
+                    "value": "0x7a69"
+                },
+                "result": {
+                    "gasUsed": "0x0",
+                    "output": "0x"
+                },
+                "subtraces": 0,
+                "traceAddress": [],
+                "type": "call"
+            }
+        ],
+        "transactionHash": "0x5c504ed432cb51138bcf09aa5e8a410dd4a1e204ef84bfed1be16dfba1b22060",
+        "vmTrace": null
+    }]
+	"#;
 
     const EXAMPLE_TRACE_ARR: &'static str = r#"
     [
@@ -180,9 +211,9 @@ mod tests {
       }
     "#;
 
-    rpc_test! (
+    rpc_test!(
     Traces:call, CallRequest {
-    from: None, to: 0x123.into(),
+    from: None, to: Address::from_low_u64_be(0x123),
     gas: None, gas_price: None,
     value: Some(0x1.into()), data: None,
     }, vec![TraceType::Trace], None
@@ -211,9 +242,9 @@ mod tests {
     rpc_test!(
     Traces:replay_block_transactions, BlockNumber::Latest, vec![TraceType::Trace]
     =>
-    "trace_replayBlockTransaction", vec![r#""latest""#, r#"["trace"]"#];
-    ::serde_json::from_str(EXAMPLE_BLOCKTRACE).unwrap()
-    => ::serde_json::from_str::<BlockTrace>(EXAMPLE_BLOCKTRACE).unwrap()
+    "trace_replayBlockTransactions", vec![r#""latest""#, r#"["trace"]"#];
+    ::serde_json::from_str(EXAMPLE_BLOCKTRACES).unwrap()
+    => ::serde_json::from_str::<Vec<BlockTrace>>(EXAMPLE_BLOCKTRACES).unwrap()
     );
 
     rpc_test!(
