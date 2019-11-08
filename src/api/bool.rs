@@ -3,10 +3,11 @@
 use crate::api::{Namespace, Eth};
 use crate::helpers::{self, CallFuture, BatchCallFuture};
 use crate::types::{Address, Block, BlockId, BlockNumber, Bytes, CallRequest, H256, H520, H64, U128, Index, SyncState, Transaction, TransactionId, TransactionReceipt, TransactionRequest, U256, Work, Filter, Log, RawHeader, RawReceipt};
-use crate::error::{Error, ErrorKind};
+use crate::error::Error;
 use crate::{RequestId, BatchTransport};
 use trie::{Trie, build_order_trie, Proof};
 use futures::{Future, IntoFuture, Poll, Stream};
+use jsonrpc_core as rpc;
 
 /// `Bool` namespace
 #[derive(Debug, Clone)]
@@ -126,11 +127,11 @@ impl<T: BatchTransport> Future for ReceiptProof<T> {
                     let raw_receipts:Vec<RawReceipt> = receipts.into_iter().filter(|x| x.is_some()).map(|x| {x.unwrap().into()}).collect();
                     println!("########### {:?}", raw_receipts);
                     if raw_receipts.len() != block.transactions.len() {
-                        return Err(ErrorKind::InvalidResponse("Expected got batch success".into()).into());
+                        return Err(Error::InvalidResponse("Expected got batch success".into()).into());
                     }
                     let rlp_receipts:Vec<Vec<u8>> = raw_receipts.into_iter().map(|r| rlp::encode(&r)).collect();
                     println!("########### rlp_receipts {:?}", rlp_receipts);
-                    let transaction_index: U128 = transaction.transaction_index.ok_or(ErrorKind::InvalidResponse("Expected transaction index".into()))?;
+                    let transaction_index: U128 = transaction.transaction_index.ok_or(Error::InvalidResponse("Expected transaction index".into()))?;
                     let index = transaction_index.bits();
                     println!("########### index {:?}", index);
                     let mut trie = build_order_trie(rlp_receipts)?;
@@ -138,7 +139,7 @@ impl<T: BatchTransport> Future for ReceiptProof<T> {
                     let root = trie.root()?;
                     println!("##### root: {:?},  block root: {:?}", Bytes(root.clone()), block.receipts_root);
                     if root != block.receipts_root.as_ref() {
-                        return Err(ErrorKind::InvalidResponse("Expected valid receipts root".into()).into())
+                        return Err(Error::InvalidResponse("Expected valid receipts root".into()).into())
                     }
                     let proof = trie.get_proof(&rlp::encode(&index))?;
                     let rlp_proof = proof.to_rlp();

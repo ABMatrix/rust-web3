@@ -9,7 +9,7 @@ use crate::api::{Eth, Namespace};
 use crate::confirm;
 use crate::contract::tokens::Tokenize;
 use crate::contract::{Contract, Options};
-use crate::types::{Address, Bytes, TransactionRequest};
+use crate::types::{Address, Bytes, TransactionReceipt, TransactionRequest};
 use crate::Transport;
 
 pub use crate::contract::error::deploy::Error;
@@ -50,6 +50,61 @@ impl<T: Transport> Builder<T> {
         P: Tokenize,
         V: AsRef<str>,
     {
+        let transport = self.eth.transport().clone();
+        let poll_interval = self.poll_interval;
+        let confirmations = self.confirmations;
+
+        self.do_execute(code, params, from, move |tx| {
+            confirm::send_transaction_with_confirmation(transport, tx, poll_interval, confirmations)
+        })
+    }
+    /// Execute deployment passing code and contructor parameters.
+    ///
+    /// Unlike the above `execute`, this method uses
+    /// `sign_raw_transaction_with_confirmation` instead of
+    /// `sign_transaction_with_confirmation`, which requires the account from
+    /// which the transaction is sent to be unlocked.
+    pub fn sign_and_execute<P, V>(
+        self,
+        code: V,
+        params: P,
+        from: Address,
+        password: &str,
+    ) -> Result<PendingContract<T, impl Future<Item = TransactionReceipt, Error = crate::error::Error>>, ethabi::Error>
+    where
+        P: Tokenize,
+        V: AsRef<str>,
+    {
+        let transport = self.eth.transport().clone();
+        let poll_interval = self.poll_interval;
+        let confirmations = self.confirmations;
+
+        self.do_execute(code, params, from, move |tx| {
+            crate::api::Personal::new(transport.clone())
+                .sign_transaction(tx, password)
+                .and_then(move |signed_tx| {
+                    confirm::send_raw_transaction_with_confirmation(
+                        transport,
+                        signed_tx.raw,
+                        poll_interval,
+                        confirmations,
+                    )
+                })
+        })
+    }
+
+    fn do_execute<P, V, Ft>(
+        self,
+        code: V,
+        params: P,
+        from: Address,
+        send: impl FnOnce(TransactionRequest) -> Ft,
+    ) -> Result<PendingContract<T, Ft>, ethabi::Error>
+    where
+        P: Tokenize,
+        V: AsRef<str>,
+        Ft: Future<Item = TransactionReceipt, Error = crate::error::Error>,
+    {
         let options = self.options;
         let eth = self.eth;
         let abi = self.abi;
@@ -67,12 +122,12 @@ impl<T: Transport> Builder<T> {
             code_hex = code_hex.replacen(&replace, &address, 1);
         }
         code_hex = code_hex.replace("\"", "").replace("0x", ""); // This is to fix truffle + serde_json redundant `"` and `0x`
-        let code = code_hex.from_hex().map_err(|e| ethabi::ErrorKind::Hex(e))?;
+        let code = code_hex.from_hex().map_err(ethabi::ErrorKind::Hex)?;
 
         let params = params.into_tokens();
         let data = match (abi.constructor(), params.is_empty()) {
             (None, false) => {
-                return Err(ethabi::ErrorKind::Msg(format!("Constructor is not defined in the ABI.")).into());
+                return Err(ethabi::ErrorKind::Msg("Constructor is not defined in the ABI.".into()).into());
             }
             (None, true) => code,
             (Some(constructor), _) => constructor.encode_input(code, &params)?,
@@ -89,12 +144,7 @@ impl<T: Transport> Builder<T> {
             condition: options.condition,
         };
 
-        let waiting = confirm::send_transaction_with_confirmation(
-            eth.transport().clone(),
-            tx,
-            self.poll_interval,
-            self.confirmations,
-        );
+        let waiting = send(tx);
 
         Ok(PendingContract {
             eth: Some(eth),
@@ -105,13 +155,16 @@ impl<T: Transport> Builder<T> {
 }
 
 /// Contract being deployed.
-pub struct PendingContract<T: Transport> {
+pub struct PendingContract<
+    T: Transport,
+    F: Future<Item = TransactionReceipt, Error = crate::error::Error> = confirm::SendTransactionWithConfirmation<T>,
+> {
     eth: Option<Eth<T>>,
     abi: Option<ethabi::Contract>,
-    waiting: confirm::SendTransactionWithConfirmation<T>,
+    waiting: F,
 }
 
-impl<T: Transport> Future for PendingContract<T> {
+impl<T: Transport, F: Future<Item = TransactionReceipt, Error = crate::error::Error>> Future for PendingContract<T, F> {
     type Item = Contract<T>;
     type Error = Error;
 
@@ -120,9 +173,14 @@ impl<T: Transport> Future for PendingContract<T> {
         let eth = self.eth.take().expect("future polled after ready; qed");
         let abi = self.abi.take().expect("future polled after ready; qed");
 
-        match receipt.contract_address {
-            Some(address) => Ok(Async::Ready(Contract::new(eth, address, abi))),
-            None => Err(Error::ContractDeploymentFailure(receipt.transaction_hash).into()),
+        match receipt.status {
+            Some(status) if status == 0.into() => Err(Error::ContractDeploymentFailure(receipt.transaction_hash)),
+            // If the `status` field is not present we use the presence of `contract_address` to
+            // determine if deployment was successfull.
+            _ => match receipt.contract_address {
+                Some(address) => Ok(Async::Ready(Contract::new(eth, address, abi))),
+                None => Err(Error::ContractDeploymentFailure(receipt.transaction_hash)),
+            },
         }
     }
 }
@@ -133,7 +191,7 @@ mod tests {
     use crate::contract::{Contract, Options};
     use crate::helpers::tests::TestTransport;
     use crate::rpc;
-    use crate::types::U256;
+    use crate::types::{Address, U256};
     use futures::Future;
     use serde_json::Value;
     use std::collections::HashMap;
@@ -157,7 +215,7 @@ mod tests {
         )]));
         // receipt
         let receipt = ::serde_json::from_str::<rpc::Value>(
-        "{\"blockHash\":\"0xd5311584a9867d8e129113e1ec9db342771b94bd4533aeab820a5bcc2c54878f\",\"blockNumber\":\"0x256\",\"contractAddress\":\"0x600515dfe465f600f0c9793fa27cd2794f3ec0e1\",\"cumulativeGasUsed\":\"0xe57e0\",\"gasUsed\":\"0xe57e0\",\"logs\":[],\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"root\":null,\"transactionHash\":\"0x70ae45a5067fdf3356aa615ca08d925a38c7ff21b486a61e79d5af3969ebc1a1\",\"transactionIndex\":\"0x0\"}"
+        "{\"blockHash\":\"0xd5311584a9867d8e129113e1ec9db342771b94bd4533aeab820a5bcc2c54878f\",\"blockNumber\":\"0x256\",\"contractAddress\":\"0x600515dfe465f600f0c9793fa27cd2794f3ec0e1\",\"cumulativeGasUsed\":\"0xe57e0\",\"gasUsed\":\"0xe57e0\",\"logs\":[],\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"root\":null,\"transactionHash\":\"0x70ae45a5067fdf3356aa615ca08d925a38c7ff21b486a61e79d5af3969ebc1a1\",\"transactionIndex\":\"0x0\", \"status\": \"0x1\"}"
       ).unwrap();
         transport.add_response(receipt.clone());
         // block number
@@ -175,7 +233,7 @@ mod tests {
                 .execute(
                     "0x01020304",
                     (U256::from(1_000_000), "My Token".to_owned(), 3u64, "MT".to_owned()),
-                    5.into(),
+                    Address::from_low_u64_be(5),
                 )
                 .unwrap()
                 .wait()
@@ -206,7 +264,7 @@ mod tests {
         use serde_json::{to_string, to_vec};
         let mut transport = TestTransport::default();
         let receipt = ::serde_json::from_str::<rpc::Value>(
-        "{\"blockHash\":\"0xd5311584a9867d8e129113e1ec9db342771b94bd4533aeab820a5bcc2c54878f\",\"blockNumber\":\"0x256\",\"contractAddress\":\"0x600515dfe465f600f0c9793fa27cd2794f3ec0e1\",\"cumulativeGasUsed\":\"0xe57e0\",\"gasUsed\":\"0xe57e0\",\"logs\":[],\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"root\":null,\"transactionHash\":\"0x70ae45a5067fdf3356aa615ca08d925a38c7ff21b486a61e79d5af3969ebc1a1\",\"transactionIndex\":\"0x0\"}"
+        "{\"blockHash\":\"0xd5311584a9867d8e129113e1ec9db342771b94bd4533aeab820a5bcc2c54878f\",\"blockNumber\":\"0x256\",\"contractAddress\":\"0x600515dfe465f600f0c9793fa27cd2794f3ec0e1\",\"cumulativeGasUsed\":\"0xe57e0\",\"gasUsed\":\"0xe57e0\",\"logs\":[],\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"root\":null,\"transactionHash\":\"0x70ae45a5067fdf3356aa615ca08d925a38c7ff21b486a61e79d5af3969ebc1a1\",\"transactionIndex\":\"0x0\", \"status\": \"0x1\"}"
         ).unwrap();
 
         for _ in 0..2 {
@@ -237,7 +295,7 @@ mod tests {
         {
             let builder = Contract::deploy(api::Eth::new(&transport), &lib_abi).unwrap();
             lib_address = builder
-                .execute(lib_code, (), 0.into())
+                .execute(lib_code, (), Address::zero())
                 .unwrap()
                 .wait()
                 .unwrap()
@@ -267,7 +325,7 @@ mod tests {
                 linker
             })
             .unwrap();
-            let _ = builder.execute(main_code, (), 0.into()).unwrap().wait().unwrap();
+            let _ = builder.execute(main_code, (), Address::zero()).unwrap().wait().unwrap();
         }
 
         transport.assert_request("eth_sendTransaction", &[
@@ -288,5 +346,4 @@ mod tests {
         );
         transport.assert_no_more_requests();
     }
-
 }

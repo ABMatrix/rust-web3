@@ -14,23 +14,19 @@ mod bool;
 
 pub use self::eth::Eth;
 pub use self::eth_filter::{BaseFilter, CreateFilter, EthFilter, FilterStream};
-pub use self::eth_subscribe::{SubscriptionId, SubscriptionStream};
+pub use self::eth_subscribe::{EthSubscribe, SubscriptionId, SubscriptionResult, SubscriptionStream};
 pub use self::net::Net;
 pub use self::parity_accounts::ParityAccounts;
 pub use self::parity_set::ParitySet;
 pub use self::personal::Personal;
 pub use self::traces::Traces;
 pub use self::web3::Web3 as Web3Api;
-pub use self::abos::Abos;
 pub use self::bool::{Bool, ReceiptProof};
 
-use crate::types::{Bytes, TransactionRequest, U256};
+use crate::types::{Bytes, TransactionRequest, U64};
 use crate::{confirm, DuplexTransport, Error, Transport};
 use futures::IntoFuture;
 use std::time::Duration;
-use futures::IntoFuture;
-use {confirm, DuplexTransport, Error, Transport, BatchTransport};
-use types::{Bytes, TransactionRequest, U256};
 
 /// Common API for all namespaces
 pub trait Namespace<T: Transport>: Clone {
@@ -116,7 +112,7 @@ impl<T: Transport> Web3<T> {
         check: V,
     ) -> confirm::Confirmations<T, V, F::Future>
     where
-        F: IntoFuture<Item = Option<U256>, Error = Error>,
+        F: IntoFuture<Item = Option<U64>, Error = Error>,
         V: confirm::ConfirmationCheck<Check = F>,
     {
         confirm::wait_for_confirmations(self.eth(), self.eth_filter(), poll_interval, confirmations, check)

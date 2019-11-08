@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use crate::api::{CreateFilter, Eth, EthFilter, FilterStream, Namespace};
 use crate::helpers::CallFuture;
-use crate::types::{Bytes, TransactionReceipt, TransactionRequest, H256, U256};
+use crate::types::{Bytes, TransactionReceipt, TransactionRequest, H256, U64};
 use crate::{Error, Transport};
 use futures::stream::Skip;
 use futures::{Future, IntoFuture, Poll, Stream};
@@ -12,7 +12,7 @@ use futures::{Future, IntoFuture, Poll, Stream};
 /// Checks whether an event has been confirmed.
 pub trait ConfirmationCheck {
     /// Future resolved when is known whether an event has been confirmed.
-    type Check: IntoFuture<Item = Option<U256>, Error = Error>;
+    type Check: IntoFuture<Item = Option<U64>, Error = Error>;
 
     /// Should be called to get future which resolves when confirmation state is known.
     fn check(&self) -> Self::Check;
@@ -21,7 +21,7 @@ pub trait ConfirmationCheck {
 impl<F, T> ConfirmationCheck for F
 where
     F: Fn() -> T,
-    T: IntoFuture<Item = Option<U256>, Error = Error>,
+    T: IntoFuture<Item = Option<U64>, Error = Error>,
 {
     type Check = T;
 
@@ -33,7 +33,7 @@ where
 enum WaitForConfirmationsState<F, O> {
     WaitForNextBlock,
     CheckConfirmation(F),
-    CompareConfirmations(u64, CallFuture<U256, O>),
+    CompareConfirmations(u64, CallFuture<U64, O>),
 }
 
 struct WaitForConfirmations<T, V, F>
@@ -51,7 +51,7 @@ impl<T, V, F> Future for WaitForConfirmations<T, V, F::Future>
 where
     T: Transport,
     V: ConfirmationCheck<Check = F>,
-    F: IntoFuture<Item = Option<U256>, Error = Error>,
+    F: IntoFuture<Item = Option<U64>, Error = Error>,
 {
     type Item = ();
     type Error = Error;
@@ -123,7 +123,7 @@ impl<T, V, F> Future for Confirmations<T, V, F::Future>
 where
     T: Transport,
     V: ConfirmationCheck<Check = F>,
-    F: IntoFuture<Item = Option<U256>, Error = Error>,
+    F: IntoFuture<Item = Option<U64>, Error = Error>,
 {
     type Item = ();
     type Error = Error;
@@ -163,7 +163,7 @@ pub fn wait_for_confirmations<T, V, F>(
 where
     T: Transport,
     V: ConfirmationCheck<Check = F>,
-    F: IntoFuture<Item = Option<U256>, Error = Error>,
+    F: IntoFuture<Item = Option<U64>, Error = Error>,
 {
     Confirmations::new(eth, eth_filter, poll_interval, confirmations, check)
 }
@@ -173,7 +173,7 @@ struct TransactionReceiptBlockNumber<T: Transport> {
 }
 
 impl<T: Transport> Future for TransactionReceiptBlockNumber<T> {
-    type Item = Option<U256>;
+    type Item = Option<U64>;
     type Error = Error;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
@@ -198,7 +198,7 @@ impl<T: Transport> ConfirmationCheck for TransactionReceiptBlockNumberCheck<T> {
 
     fn check(&self) -> Self::Check {
         TransactionReceiptBlockNumber {
-            future: self.eth.transaction_receipt(self.hash.clone()),
+            future: self.eth.transaction_receipt(self.hash),
         }
     }
 }
@@ -266,7 +266,7 @@ impl<T: Transport> Future for SendTransactionWithConfirmation<T> {
                     let hash = try_ready!(future.poll());
                     if self.confirmations > 0 {
                         let confirmation_check =
-                            TransactionReceiptBlockNumberCheck::new(Eth::new(self.transport.clone()), hash.clone());
+                            TransactionReceiptBlockNumberCheck::new(Eth::new(self.transport.clone()), hash);
                         let eth = Eth::new(self.transport.clone());
                         let eth_filter = EthFilter::new(self.transport.clone());
                         let wait = wait_for_confirmations(
@@ -329,7 +329,7 @@ mod tests {
     use super::send_transaction_with_confirmation;
     use crate::helpers::tests::TestTransport;
     use crate::rpc::Value;
-    use crate::types::{TransactionReceipt, TransactionRequest};
+    use crate::types::{Address, TransactionReceipt, TransactionRequest, H256, U128};
     use futures::Future;
     use serde_json::json;
     use std::time::Duration;
@@ -339,8 +339,8 @@ mod tests {
         let mut transport = TestTransport::default();
         let confirmations = 3;
         let transaction_request = TransactionRequest {
-            from: 0x123.into(),
-            to: Some(0x123.into()),
+            from: Address::from_low_u64_be(0x123),
+            to: Some(Address::from_low_u64_be(0x123)),
             gas: None,
             gas_price: Some(1.into()),
             value: Some(1.into()),
@@ -350,9 +350,9 @@ mod tests {
         };
 
         let transaction_receipt = TransactionReceipt {
-            transaction_hash: 0.into(),
-            transaction_index: 0.into(),
-            block_hash: Some(0.into()),
+            transaction_hash: H256::zero(),
+            transaction_index: U128::zero(),
+            block_hash: Some(H256::zero()),
             block_number: Some(2.into()),
             cumulative_gas_used: 0.into(),
             gas_used: Some(0.into()),

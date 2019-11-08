@@ -100,9 +100,10 @@ pub struct Trace {
     /// Block Hash
     #[serde(rename = "blockHash")]
     pub block_hash: H256,
+    /// Action Type
     #[serde(rename = "type")]
-    action_type: ActionType,
-    // Error
+    pub action_type: ActionType,
+    /// Error
     pub error: Option<String>,
 }
 
@@ -114,8 +115,6 @@ pub enum Res {
     Call(CallResult),
     /// Create
     Create(CreateResult),
-    /// Call or Create failure
-    FailedCallOrCreate(String),
     /// None
     None,
 }
@@ -140,12 +139,17 @@ pub enum Action {
     Reward(Reward),
 }
 
+/// An external action type.
 #[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ActionType {
+    /// Contract call.
     Call,
+    /// Contract creation.
     Create,
+    /// Contract suicide.
     Suicide,
+    /// A block reward.
     Reward,
 }
 
