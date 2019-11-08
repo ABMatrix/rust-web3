@@ -22,6 +22,7 @@ pub use self::personal::Personal;
 pub use self::traces::Traces;
 pub use self::web3::Web3 as Web3Api;
 pub use self::bool::{Bool, ReceiptProof};
+pub use self::abos::Abos;
 
 use crate::types::{Bytes, TransactionRequest, U64};
 use crate::{confirm, DuplexTransport, Error, Transport};
