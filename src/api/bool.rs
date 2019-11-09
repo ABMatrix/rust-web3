@@ -62,6 +62,27 @@ impl<T: BatchTransport> Bool<T> {
         BatchCallFuture::new(self.transport.send_batch(requests))
     }
 
+    /// Get blocks by batch sending
+    pub fn blocks(&self, block_ids: Vec<BlockId>) -> BatchCallFuture<Option<Block<H256>>, T::Batch> {
+        let requests = block_ids.into_iter().map(|block_id| {
+            let req = helpers::serialize(&block_id);
+            let include_txs = helpers::serialize(&false);
+            let result = match block_id {
+                BlockId::Hash(hash) => {
+                    let hash = helpers::serialize(&hash);
+                    self.transport.prepare("eth_getBlockByHash", vec![hash, include_txs])
+                }
+                BlockId::Number(num) => {
+                    let num = helpers::serialize(&num);
+                    self.transport.prepare("eth_getBlockByNumber", vec![num, include_txs])
+                }
+            };
+            result
+        }).collect::<Vec<(RequestId, rpc::Call)>>();
+
+        BatchCallFuture::new(self.transport.send_batch(requests))
+    }
+
     /// Get receipt proof
     pub fn receipt_proof(&self, hash: H256) -> ReceiptProof<T> {
         let hash = TransactionId::Hash(hash);
