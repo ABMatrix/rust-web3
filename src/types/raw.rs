@@ -296,6 +296,13 @@ use super::{TransactionReceipt as RpcReceipt, Block as RpcBlock, Log as RpcLog};
 
 impl From<RpcBlock<H256>> for Header {
     fn from(block: RpcBlock<H256>) -> Header {
+        let mut seal: Vec<Vec<u8>> = block.seal_fields.into_iter().map(|v|v.0).collect();
+        if let Some(hash) = block.mix_hash {
+            seal.push(rlp::encode(&hash));
+        }
+        if let Some(nonce) = block.nonce {
+            seal.push(rlp::encode(&nonce));
+        }
         Header {
             parent_hash: block.parent_hash,
             timestamp: block.timestamp.low_u64(),
@@ -310,7 +317,7 @@ impl From<RpcBlock<H256>> for Header {
             gas_used: block.gas_used,
             gas_limit: block.gas_limit,
             difficulty: block.difficulty,
-            seal: block.seal_fields.into_iter().map(|v|v.0).collect(),
+            seal: seal,
             hash: None,
         }
     }
@@ -409,8 +416,10 @@ mod tests {
         // that's rlp of block header created with ethash engine.
         let header_rlp: Vec<u8> = ::rustc_hex::FromHex::from_hex("f9020ea00e6c4c42797b9ff736222c9172fda32564f4028bd7a0506af58ca87b6a4516eba01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d4934794d7a15baeb7ea05c9660cbe03fb7999c2c2e57625a0abc2db349e5361fee90bf67fb015cf5991b77f2771e4c3cf627a74b119068184a01a5ad14d4162624fd7f47fd40e54b6198c3f7ad8c79fff9ce5481ce8d3f5169ca07fa081e3e33e53c4d09ae691af3853bb73a7e02c856104fe843172abab85df7bb90100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000400000000000000000000008000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008000000200000000000000000000000000000000008501b4ee1cc0836683ab837a121d835cdb6e845dc2404a8f41746c616e7469632043727970746fa0b13e3b734345e4b6f56af4b228fe00c9d77a3d1859ac44279a52f534b8e1869a8860f7e4e35f62e3bb").unwrap();
 
-        let header: Header = rlp::decode(&header_rlp).expect("error decoding header");
+        let mut header: Header = rlp::decode(&header_rlp).expect("error decoding header");
         println!("{:?}", header);
+        header.hash = None;
+        println!("header hash: {:?}", header.hash());
         let encoded_header = rlp::encode(&header);
 
         assert_eq!(header_rlp, encoded_header);
