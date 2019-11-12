@@ -20,7 +20,7 @@ fn main() {
             64,
         ).unwrap(),
     );
-    let hash = H256::from_str("b04fcb9822eb21b5ffdbf89df076de58469af66d23c86abe30266e5d3c5e0db2").unwrap();
+    let hash = H256::from_str("ce62c3d1d2a43cfcc39707b98de53e61a7ef7b7f8853e943d85e511b3451aa7e").unwrap();
     let proof = event_loop.run(bl.receipt_proof(hash)).unwrap();
     println!("Proof: {:?}", proof);
 }

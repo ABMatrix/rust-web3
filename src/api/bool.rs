@@ -150,7 +150,7 @@ impl<T: BatchTransport> Future for ReceiptProof<T> {
                     }
                     let rlp_receipts:Vec<Vec<u8>> = raw_receipts.into_iter().map(|r| rlp::encode(&r)).collect();
                     let transaction_index: U128 = transaction.transaction_index.ok_or(Error::InvalidResponse("Expected transaction index".into()))?;
-                    let index = transaction_index.bits();
+                    let index = transaction_index.low_u64() as usize;
                     let mut trie = build_order_trie(rlp_receipts)?;
                     // check status root.
                     let root = trie.root()?;
